@@ -15,5 +15,5 @@ public class Notification
 
     public DateTime CreatedAt { get; set; }
 
-    public required BusinessEntity BusinessEntity { get; set; }
+    public required int BusinessEntityID { get; set; }
 }
