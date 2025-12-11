@@ -1,2 +1,23 @@
+# Build results
+bin/
+obj/
+out/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+
+# Logs
+*.log
+
+# NuGet packages
+packages/
+
+# VS Code
+.vscode/
+
+# Configurações locais
+appsettings.Development.json
 appsettings.json
 appsettings.*.json
