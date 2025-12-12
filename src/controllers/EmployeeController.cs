@@ -44,7 +44,7 @@ namespace API.src.controllers
         [HttpGet("")]
         public async Task<IActionResult> GetAllEmployees()
         {
-            
+
             var employees = await (
                     from e in _db.Employee
                     join p in _db.Person on e.BusinessEntityID equals p.BusinessEntityID
@@ -62,7 +62,7 @@ namespace API.src.controllers
                         LastName = p.LastName,
                         JobTitle = e.JobTitle,
                         Department = dh != null && dh.EndDate == null ? d.Name : "(Sem departamento)",
-                        Email = em != null ? em.EmailAddress1 : "(Sem email)",
+                        Email = em != null ? em.EmailAddress1 ?? "" : "",
                         HireDate = e.HireDate
                     }
 
@@ -71,11 +71,50 @@ namespace API.src.controllers
             return Ok(employees);
         }
 
-        [HttpGet("{id}")]
+
+        [HttpGet("{id:int}")]
         public async Task<IActionResult> GetEmployee(int id)
         {
-            // Implementation for retrieving employees
-            return Ok("List of employees.");
+            var dto = await (
+                from e in _db.Employee
+                where e.BusinessEntityID == id
+                join p in _db.Person on e.BusinessEntityID equals p.BusinessEntityID
+                join em in
+                    (
+                        from x in _db.EmailAddress
+                        where x.BusinessEntityID == id
+                        group x by x.BusinessEntityID into g
+                        select new
+                        {
+                            BusinessEntityID = g.Key,
+                            Email = g.OrderBy(x => x.EmailAddressID).Select(x => x.EmailAddress1).FirstOrDefault()
+                        }
+                    )
+                on e.BusinessEntityID equals em.BusinessEntityID into emx
+                from em in emx.DefaultIfEmpty()
+                join dh in _db.EmployeeDepartmentHistory
+                    .Where(h => h.EndDate == null)
+                    on e.BusinessEntityID equals dh.BusinessEntityID into dhx
+                from dh in dhx.DefaultIfEmpty()
+                join d in _db.Department on dh.DepartmentID equals d.DepartmentID into dx
+                from d in dx.DefaultIfEmpty()
+                select new EmployeeDTO
+                {
+                    BusinessEntityID = e.BusinessEntityID,
+                    FirstName = p.FirstName,
+                    MiddleName = p.MiddleName,
+                    LastName = p.LastName,
+                    JobTitle = e.JobTitle,
+                    Department = d != null ? d.Name : "(Sem departamento)",
+                    Email = em != null ? em.Email ?? "" : "",
+                    HireDate = e.HireDate
+                }
+            ).FirstOrDefaultAsync();
+
+            if (dto is null)
+                return NotFound(new { error = $"Funcionário com BusinessEntityID={id} não encontrado." });
+
+            return Ok(dto);
         }
 
         [HttpPut("{id}")]
