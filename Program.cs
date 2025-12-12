@@ -52,6 +52,12 @@ builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
+
+app.UseAuthentication();
+
+app.UseAuthorization();
+
+
 app.MapControllers();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
