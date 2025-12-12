@@ -71,7 +71,7 @@ namespace API.src.controllers
                     BusinessEntity = person,
                     HireDate = DateOnly.FromDateTime(DateTime.Now),
                     Gender = "M",
-                    JobTitle = "New Hire",
+                    JobTitle = request.JobTitle,
                     LoginID = request.Email,
                     MaritalStatus = "S",
                     BirthDate = DateOnly.FromDateTime(DateTime.Now.AddYears(-25)),
@@ -197,20 +197,21 @@ namespace API.src.controllers
             var lastDep = await _db.EmployeeDepartmentHistory
                 .Where(edh => edh.BusinessEntityID == id && edh.EndDate == null).FirstOrDefaultAsync();
 
-            if (lastDep == null || lastDep.Department.Name != request.Department)
+            if (request.Department != null && lastDep != null && request.Department != lastDep.Department.Name)
             {
                 var newDep = await _db.Department
                     .Where(d => d.Name == request.Department)
                     .FirstOrDefaultAsync();
                 if (newDep == null)
                     return NotFound("Department not found.");
+                if (lastDep != null)
+                    lastDep.EndDate = DateOnly.FromDateTime(DateTime.Now);
 
-                lastDep.EndDate = DateOnly.FromDateTime(DateTime.Now);
                 var newDepHistory = new EmployeeDepartmentHistory
                 {
                     BusinessEntityID = id,
                     DepartmentID = newDep.DepartmentID,
-                    ShiftID = lastDep.ShiftID,
+                    ShiftID = lastDep?.ShiftID ?? 1,
                     StartDate = DateOnly.FromDateTime(DateTime.Now),
                     EndDate = null
                 };
@@ -221,7 +222,6 @@ namespace API.src.controllers
                 .Where(ea => ea.BusinessEntityID == id)
                 .OrderBy(ea => ea.EmailAddressID)
                 .FirstOrDefaultAsync();
-
             if (emailRecord != null)
             {
                 emailRecord.EmailAddress1 = request.Email ?? emailRecord.EmailAddress1;
@@ -239,7 +239,6 @@ namespace API.src.controllers
             }
 
             await _db.SaveChangesAsync();
-
             return Ok("Employee updated.");
         }
 
@@ -248,8 +247,6 @@ namespace API.src.controllers
         {
 
             if (!await _EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
-
-
 
             // Implementation for altering an employee's password
             return Ok("Employee password altered.");
@@ -339,11 +336,8 @@ namespace API.src.controllers
 
         private async Task<bool> _EmployeeIsActive(int id)
         {
-            //return !(await _db.Employee.FindAsync(id)).CurrentFlag;
-
             var emp = await _db.Employee.FindAsync(id);
-            return emp != null && emp.CurrentFlag == true; // true = ativo
-
+            return emp != null && emp.CurrentFlag == false; // true = ativo
         }
     }
 }
