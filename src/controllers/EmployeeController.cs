@@ -158,7 +158,7 @@ namespace API.src.controllers
                 BusinessEntityID = employee.BusinessEntityID,
                 FirstName = employee.BusinessEntity.FirstName,
                 MiddleName = employee.BusinessEntity?.MiddleName,
-                LastName = employee.BusinessEntity.LastName,
+                LastName = employee.BusinessEntity?.LastName ?? "",
                 JobTitle = employee.JobTitle,
                 Department = employee.EmployeeDepartmentHistory
                     .Where(h => h.EndDate == null)
