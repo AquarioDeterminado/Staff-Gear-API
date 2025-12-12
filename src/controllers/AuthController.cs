@@ -29,9 +29,9 @@ namespace API.src.controllers
             public string Username { get; set; } = null!;
             public string Password { get; set; } = null!;
         }
-
-        [HttpPost("login")]
+        
         [AllowAnonymous]
+        [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
@@ -82,7 +82,7 @@ namespace API.src.controllers
                 access_token = tokenStr,
                 role = user.Role,
                 user_id = user.UserId,
-                employee_id = user.EmployeeId // pode ser null
+                employee_id = user.EmployeeId
             });
         }
     }

@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using API.src.models.dtos;
 using API.src.models.viewModels;
+using API.src.auth;
+using System.Security.Claims;
+
 
 namespace API.src.controllers
 {
@@ -17,6 +20,7 @@ namespace API.src.controllers
     {
         public string CurrentPassword { get; set; } = null!;
         public string NewPassword { get; set; } = null!;
+        public string ConfirmPassword {get;set; } = null;
     }
 
     [ApiController]
@@ -32,7 +36,7 @@ namespace API.src.controllers
             _mapper = mapper;
         }
 
-
+        [Authorize(Policy = "RequireHR")]
         [HttpPost]
         public async Task<IActionResult> CreateEmployee([FromBody] EmployeeViewModel request)
         {
@@ -92,6 +96,19 @@ namespace API.src.controllers
                 _db.EmailAddress.Add(email);
                 _db.Employee.Add(employee);
                 _db.EmployeeDepartmentHistory.Add(deptHistory);
+                
+                await _db.SaveChangesAsync();
+
+                var user = new User
+                {
+                    Username = request.Email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.PassWord),
+                    Role = request.Role ?? "Employee",
+                    IsActive = true,
+                    EmployeeId = employee.BusinessEntityID
+                };
+                _db.Users.Add(user);
+
                 await _db.SaveChangesAsync();
             }
             catch (Exception ex)
@@ -102,6 +119,7 @@ namespace API.src.controllers
             return Ok("Employee created.");
         }
 
+        [Authorize(Policy = "RequireHR")]
         [HttpGet]
         public async Task<IActionResult> GetAllEmployees()
         {
@@ -134,21 +152,25 @@ namespace API.src.controllers
             return Ok(employees);
         }
 
+
+        [Authorize(Policy = "AnyUser")]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetEmployee(int id)
         {
-            if (id <= 0) return BadRequest("Indique um ID válido.");
-
+            if (id <= 0) return BadRequest("Insert a valid ID");
+            
+            if (!EmployeeSessionManager.UserIsHimself(User, id) && !User.IsInRole("HR"))
+                return Forbid("Employees can only update their own information.");
+            
             var employee = await _db.Employee
                 .Where(e => e.BusinessEntityID == id)
                 .Include(e => e.BusinessEntity)
-                .Include(e => e.EmployeeDepartmentHistory)
-                    .ThenInclude(h => h.Department)
+                .Include(e => e.EmployeeDepartmentHistory).ThenInclude(h => h.Department)
                 .Include(e => e.BusinessEntity.EmailAddress)
                 .FirstOrDefaultAsync();
 
             if (employee is null)
-                return NotFound(new { error = $"Funcionário {id} não encontrado." });
+                return NotFound(new { error = $"Employee {id} not found." });
 
             if (employee.CurrentFlag == true)
                 return BadRequest("Employee is inactive.");
@@ -163,7 +185,7 @@ namespace API.src.controllers
                 Department = employee.EmployeeDepartmentHistory
                     .Where(h => h.EndDate == null)
                     .Select(h => h.Department.Name)
-                    .FirstOrDefault() ?? "(Sem departamento)",
+                    .FirstOrDefault() ?? "(without department)",
                 Email = employee.BusinessEntity.EmailAddress
                     .OrderBy(em => em.EmailAddressID)
                     .Select(em => em.EmailAddress1)
@@ -173,10 +195,14 @@ namespace API.src.controllers
 
             return Ok(viewModel);
         }
-
+        
+        [Authorize(Policy = "AnyUser")]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeViewModel request)
         {
+            if (!EmployeeSessionManager.UserIsHimself(User, id) && !User.IsInRole("HR"))
+                return Forbid("Employees can only update their own information.");
+            
             var employee = await _db.Employee.FindAsync(id);
             if (employee == null)
                 return NotFound("Employee not found.");
@@ -242,22 +268,36 @@ namespace API.src.controllers
             return Ok("Employee updated.");
         }
 
+        
+
+        [Authorize(Policy = "AnyUser")]
         [HttpPost("alterpassword/{id}")]
         public async Task<IActionResult> AlterPassword(int id, [FromBody] AlterPasswordViewModel request)
         {
 
-            if (!await _EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
+            if (!await EmployeeSessionManager.EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
 
+            if (!EmployeeSessionManager.UserIsHimself(User, id))
+                return Forbid("Employees can only alter their own password.");
+
+            var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+            _db.Users.Where(u => u.EmployeeId == id).ToList().ForEach(u => u.PasswordHash = newPasswordHash);
+            await _db.SaveChangesAsync();
             // Implementation for altering an employee's password
             return Ok("Employee password altered.");
         }
 
 
         [HttpGet("Payments/{id}")]
+        [Authorize(Roles = "HR")]
         public async Task<IActionResult> GetEmployeePayments(int id)
         {
             if (id <= 0) return BadRequest("Indique um ID válido.");
-            if (!await _EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
+            if (!await EmployeeSessionManager.EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
+
+            if (!EmployeeSessionManager.UserIsHimself(User, id) && !User.IsInRole("HR"))
+                return Forbid("Employees can only update their own information.");
 
             var paymentsView = await _db.EmployeePayHistory
                 .Where(p => p.BusinessEntityID == id)
@@ -280,10 +320,14 @@ namespace API.src.controllers
 
 
         [HttpGet("Movements/{id}")]
+        [Authorize(Roles = "HR, Employee")]
         public async Task<IActionResult> GetEmployeeMovements(int id)
         {
             if (id <= 0) return BadRequest("Indique um ID válido.");
-            if (!await _EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
+            if (!await EmployeeSessionManager.EmployeeIsActive(id)) return BadRequest("Employee is inactive.");
+
+            if (!EmployeeSessionManager.UserIsHimself(User, id) && !User.IsInRole("HR"))
+                return Forbid("Employees can only update their own information.");
 
             var movementsView = await _db.EmployeeDepartmentHistory
                 .Where(em => em.BusinessEntityID == id)
@@ -309,6 +353,7 @@ namespace API.src.controllers
 
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = "HR")]
         public async Task<IActionResult> DeleteEmployee(int id)
         {
             //TODO: Check Authorization
@@ -332,12 +377,6 @@ namespace API.src.controllers
             {
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
-        }
-
-        private async Task<bool> _EmployeeIsActive(int id)
-        {
-            var emp = await _db.Employee.FindAsync(id);
-            return emp != null && emp.CurrentFlag == false; // true = ativo
         }
     }
 }

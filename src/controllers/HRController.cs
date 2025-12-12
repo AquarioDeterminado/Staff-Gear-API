@@ -27,8 +27,8 @@ namespace API.src.controllers
             _mapper = mapper;
         }
 
-        [HttpGet("Payments")]
         [Authorize(Policy = "RequireHR")]
+        [HttpGet("Payments")]
         public async Task<IActionResult> GetAllEmployeePayments()
         {
             var entities = await _db.EmployeePayHistory
@@ -52,6 +52,7 @@ namespace API.src.controllers
             return Ok(paymentsView);
         }
 
+        [Authorize(Policy = "RequireHR")]
         [HttpGet("Movements")]
         public async Task<IActionResult> GetAllEmployeeMovements()
         {
@@ -81,9 +82,5 @@ namespace API.src.controllers
 
             return Ok(movementsView);
         }
-
-        
-
-
     }
 }

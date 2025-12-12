@@ -46,7 +46,7 @@ public partial class AdventureWorksContext : DbContext
 
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-            => optionsBuilder.UseSqlServer("Server=localhost;Database=AdventureWorks2019;TrustServerCertificate=True;persist security info=True;MultipleActiveResultSets=True;User ID=sa;Password=Password@123");
+            => optionsBuilder.UseSqlServer("Server=localhost;Data Source=localhost\\MSSQLSERVER1;Initial Catalog=AdventureWorks2019;TrustServerCertificate=True;persist security info=True;MultipleActiveResultSets=True;User ID=sa;Password=Portugal2025!");
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<BusinessEntity>(entity =>

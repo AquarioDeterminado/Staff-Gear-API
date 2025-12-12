@@ -27,6 +27,7 @@ namespace API.src.controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
         public async Task<IActionResult> ApplyCandidate([FromBody] JobCandidateDTO request)
         {
             string? validationError;
@@ -66,6 +67,7 @@ namespace API.src.controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = "RequireHR")]
         public async Task<IActionResult> GetCandidates()
         {
             //TODO: Check Authorization
@@ -76,6 +78,7 @@ namespace API.src.controllers
         }
 
         [HttpGet("accept/{id}")]
+        [Authorize(Policy = "RequireHR")]
         public async Task<IActionResult> AcceptCandidate(int id)
         {
             var candidate = await _db.JobCandidate.FindAsync(id);

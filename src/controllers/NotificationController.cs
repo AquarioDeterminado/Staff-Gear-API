@@ -3,12 +3,15 @@ using API.src.models.dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
+using API.src.utils;
 
 namespace API.src.controllers
 {
 
     [ApiController]
     [Route("api/v1/[controller]")]
+    [AllowAnonymous]
     public class NotificationController : ControllerBase
     {
         private readonly AdventureWorksContext _db;
@@ -21,8 +24,14 @@ namespace API.src.controllers
         }
 
         [HttpGet("{BusinessEntityID}")]
+        [Authorize(Policy = "AnyUser")]
         public async Task<IActionResult> GetNotification(int BusinessEntityID)
         {
+            if (!EmployeeSessionManager.UserIsHimself(User, BusinessEntityID))
+            {
+                return Forbid("Access denied: You can only access your own notifications.");
+            }
+
             var notifications = await _db.Notification
                 .Where(n => n.BusinessEntityID == BusinessEntityID)
                 .ToListAsync();
@@ -36,13 +45,22 @@ namespace API.src.controllers
             return Ok(dtoList);
         }
 
+        [AllowAnonymous]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteNotification(int id)
         {
+
             var notification = await _db.Notification.FindAsync(id);
             if (notification == null)
             {
                 return NotFound("Notification not found.");
+            }
+
+            var businessEntityID = notification.BusinessEntityID;
+
+            if (!EmployeeSessionManager.UserIsHimself(User, businessEntityID))
+            {
+                return Forbid("Access denied: You can only access your own notifications.");
             }
 
             _db.Notification.Remove(notification);
@@ -51,8 +69,8 @@ namespace API.src.controllers
             return NoContent();
         }
 
+        [AllowAnonymous]
         [HttpDelete("user/{BusinessEntityID}")]
-
         public async Task<IActionResult> DeleteNotificationsByUser(int BusinessEntityID)
         {
             var notifications = await _db.Notification

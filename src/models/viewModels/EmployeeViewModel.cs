@@ -10,6 +10,8 @@ public class EmployeeViewModel
         public string? JobTitle { get; set; }
         public string? Department { get; set; }
         public string?  Email { get; set; }
+        public string? PassWord { get; set; }
         public DateOnly HireDate { get; set; }
+        public string? Role { get; set; } 
     }
 }
