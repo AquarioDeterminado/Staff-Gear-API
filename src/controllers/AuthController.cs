@@ -65,7 +65,7 @@ namespace API.src.controllers
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            var expiresMinutes = int.TryParse(jwt["ExpireMinutes"], out var mins) ? mins : 1;
+            var expiresMinutes = int.TryParse(jwt["ExpireMinutes"], out var mins) ? mins : 60;
 
             var token = new JwtSecurityToken(
                 issuer: jwt["Issuer"],
