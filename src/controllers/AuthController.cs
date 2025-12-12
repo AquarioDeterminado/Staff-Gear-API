@@ -1,56 +1,89 @@
-using API.src.models;
-using AutoMapper;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http.HttpResults;
-using BCrypt.Net;
-using Microsoft.EntityFrameworkCore;
-using API.src.utils;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using API.src.auth;           // User
+using API.src.models;        // AdventureWorksContext
 using Microsoft.AspNetCore.Authorization;
-using API.src.models.viewModels;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace API.src.controllers
 {
-
     [ApiController]
     [Route("api/v1/[controller]")]
-    class AuthController : ControllerBase
+    public class AuthController : ControllerBase
     {
         private readonly AdventureWorksContext _db;
-        private readonly IMapper _mapper;
+        private readonly IConfiguration _cfg;
 
-        public AuthController(AdventureWorksContext db, IMapper mapper)
+        public AuthController(AdventureWorksContext db, IConfiguration cfg)
         {
             _db = db;
-            _mapper = mapper;
+            _cfg = cfg;
+        }
+
+        public class LoginRequest
+        {
+            public string Username { get; set; } = null!;
+            public string Password { get; set; } = null!;
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        [AllowAnonymous]
+        public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            var BusinessEntityID = _db.EmailAddress
-                .Where(e => e.EmailAddress1 == request.Email)
-                .Select(e => e.BusinessEntityID)
-                .FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+                return BadRequest("Username e password são obrigatórios.");
 
-            var dbPass = _db.Password
-                .Where(p => p.BusinessEntityID == BusinessEntityID)
-                .Select(p => p.PasswordHash)
-                .FirstOrDefault();
-            
-            if (dbPass == null || !BCrypt.Net.BCrypt.Verify(request.Password, dbPass)) return Unauthorized("Invalid email or password.");
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.Username == req.Username);
 
-            var newToken = TokenService.GenerateToken(request.Email);
+            if (user is null || !user.IsActive)
+                return Unauthorized("Utilizador inválido ou inativo.");
 
-            return Ok(new { AuthToken = newToken });
-        }
+            var ok = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
+            if (!ok) return Unauthorized("Credenciais inválidas.");
 
-        [HttpGet("logout")]
-        [Authorize]
-        public async Task<IActionResult> Logout()
-        {
-            return Unauthorized("Not implemented.");
+            // Claims base
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Username),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("uid", user.UserId.ToString()),
+            };
+
+            // Claim de role (string)
+            if (!string.IsNullOrWhiteSpace(user.Role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, user.Role)); // ex.: "HR", "Employee"
+            }
+
+            // Config JWT
+            var jwt = _cfg.GetSection("Jwt");
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var expiresMinutes = int.TryParse(jwt["ExpireMinutes"], out var mins) ? mins : 1;
+
+            var token = new JwtSecurityToken(
+                issuer: jwt["Issuer"],
+                audience: jwt["Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(expiresMinutes),
+                signingCredentials: creds
+            );
+
+            var tokenStr = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return Ok(new
+            {
+                access_token = tokenStr,
+                role = user.Role,
+                user_id = user.UserId,
+                employee_id = user.EmployeeId // pode ser null
+            });
         }
     }
 }
-

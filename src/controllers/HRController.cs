@@ -28,6 +28,7 @@ namespace API.src.controllers
         }
 
         [HttpGet("Payments")]
+        [Authorize(Policy = "RequireHR")]
         public async Task<IActionResult> GetAllEmployeePayments()
         {
             var entities = await _db.EmployeePayHistory

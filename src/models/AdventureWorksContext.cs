@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
+using API.src.auth; // importa o modelo User
+
+
 namespace API.src.models;
 
 public partial class AdventureWorksContext : DbContext
@@ -39,8 +42,11 @@ public partial class AdventureWorksContext : DbContext
 
     public virtual DbSet<AuthToken> AuthToken { get; set; }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)  
-        => optionsBuilder.UseSqlServer("Server=localhost;Data Source=localhost\\MSSQLSERVER1;Initial Catalog=AdventureWorks2019;TrustServerCertificate=True;persist security info=True;MultipleActiveResultSets=True;User ID=sa;Password=Portugal2025!");
+    public virtual DbSet<User> Users { get; set; }  // <— novo DbSet
+
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+            => optionsBuilder.UseSqlServer("Server=localhost;Database=AdventureWorks2019;TrustServerCertificate=True;persist security info=True;MultipleActiveResultSets=True;User ID=sa;Password=Password@123");
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<BusinessEntity>(entity =>
@@ -342,8 +348,57 @@ public partial class AdventureWorksContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
+        // ---------- AUTH: Users ----------
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("Users", "Auth");      // Schema Auth
+            entity.HasKey(u => u.UserId);
+
+            entity.Property(u => u.Username)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.HasIndex(u => u.Username)
+                  .IsUnique();
+
+            entity.Property(u => u.PasswordHash)
+                  .IsRequired()
+                  .HasMaxLength(200);
+
+            entity.Property(u => u.Role)
+                  .IsRequired()
+                  .HasMaxLength(50);
+
+            entity.Property(u => u.IsActive)
+                  .HasDefaultValue(true);
+
+            entity.Property(u => u.EmployeeId)
+                  .IsRequired(false);
+
+            entity.Property(u => u.CreatedAtUtc)
+                  .HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.Property(u => u.UpdatedAtUtc)
+                  .HasDefaultValueSql("(sysutcdatetime())");
+        });
+
+        modelBuilder.Entity<User>(entity =>
+{
+    // ...
+    entity.HasOne<API.src.models.Employee>()   // tipo de destino
+          .WithMany()                          // sem navegação reversa
+          .HasForeignKey(u => u.EmployeeId)    // FK
+          .HasPrincipalKey(e => e.BusinessEntityID) // PK em Employee
+          .HasConstraintName("FK_AuthUsers_Employee");
+});
+
+
         OnModelCreatingPartial(modelBuilder);
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }
+
+
+
