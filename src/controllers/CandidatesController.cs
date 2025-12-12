@@ -8,28 +8,27 @@ using API.src.utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using API.src.models.dtos;
-
+using System;
 
 namespace API.src.controllers
 {
 
     [ApiController]
     [Route("api/v1/[controller]")]
-    class CandidatesController : ControllerBase
+    public class CandidateController : ControllerBase
     {
         private readonly AdventureWorksContext _db;
         private readonly IMapper _mapper;
 
-        public CandidatesController(AdventureWorksContext db, IMapper mapper)
+        public CandidateController(AdventureWorksContext db, IMapper mapper)
         {
             _db = db;
             _mapper = mapper;
         }
 
-        [HttpPost("")]
+        [HttpPost]
         public async Task<IActionResult> ApplyCandidate([FromBody] JobCandidateDTO request)
         {
-
             string? validationError;
             if ((validationError = _IsValidApplication(request)) != null)
                 return BadRequest(validationError);
@@ -66,7 +65,7 @@ namespace API.src.controllers
             }
         }
 
-        [HttpGet("")]
+        [HttpGet]
         public async Task<IActionResult> GetCandidates()
         {
             //TODO: Check Authorization
@@ -76,7 +75,7 @@ namespace API.src.controllers
             return Ok(dtoList);
         }
 
-        [HttpPost("accept/{id}")]
+        [HttpGet("accept/{id}")]
         public async Task<IActionResult> AcceptCandidate(int id)
         {
             var candidate = await _db.JobCandidate.FindAsync(id);
@@ -89,27 +88,46 @@ namespace API.src.controllers
 
                 var person = new Person
                 {
-                    BusinessEntityID = businessEntity.BusinessEntityID,
+                    BusinessEntity = businessEntity,
                     FirstName = candidate.FirstName,
                     LastName = candidate.LastName,
+                    PersonType = "EM",
                 };
 
                 var email = new EmailAddress
                 {
-                    BusinessEntityID = businessEntity.BusinessEntityID,
+                    BusinessEntity = person,
                     EmailAddress1 = candidate.Email,
                 };
 
                 var employee = new Employee
                 {
-                    BusinessEntityID = businessEntity.BusinessEntityID,
+                    BusinessEntity = person,
                     HireDate = DateOnly.FromDateTime(DateTime.Now),
+                    Gender = "M",
+                    JobTitle = "New Hire",
+                    LoginID = candidate.Email,
+                    MaritalStatus = "S",
+                    BirthDate = DateOnly.FromDateTime(DateTime.Now.AddYears(-25)),
+                    NationalIDNumber = Guid.NewGuid().ToString().Substring(0, 10)
+                };
+
+                var deptHistory = new EmployeeDepartmentHistory
+                {
+                    BusinessEntity = employee,
+                    DepartmentID = _db.Department.FirstOrDefault(d => d.Name == "Sales")?.DepartmentID ?? 1,
+                    ShiftID = 1,
+                    StartDate = DateOnly.FromDateTime(DateTime.Now),
+                    EndDate = null
                 };
 
                 _db.BusinessEntity.Add(businessEntity);
                 _db.Person.Add(person);
                 _db.EmailAddress.Add(email);
                 _db.Employee.Add(employee);
+                _db.EmployeeDepartmentHistory.Add(deptHistory);
+                _db.JobCandidate.Remove(candidate);
+                 
                 await _db.SaveChangesAsync();
             }
             catch (Exception ex)

@@ -13,7 +13,7 @@ namespace API.src.controllers
 
     [ApiController]
     [Route("api/v1/[controller]")]
-    class NotificationController : ControllerBase
+    public class NotificationController : ControllerBase
     {
         private readonly AdventureWorksContext _db;
         private readonly IMapper _mapper;

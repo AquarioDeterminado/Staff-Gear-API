@@ -7,5 +7,7 @@ namespace API.src.models.dtos
         public required string Message { get; set; }
 
         public DateTime? CreatedAt { get; set; }
+
+        public int BusinessEntityID { get; set; }
     }
 }

@@ -95,7 +95,6 @@ namespace API.src.controllers
         [HttpGet("Payments/{id}")]
         public async Task<IActionResult> GetEmployeePayments(int id)
         {
-            // Implementation for retrieving employee payments
             return Ok("List of employee payments.");
         }
 
