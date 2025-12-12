@@ -41,42 +41,78 @@ namespace API.src.controllers
             return Ok("Employee created.");
         }
 
+
         [HttpGet("")]
         public async Task<IActionResult> GetAllEmployees()
         {
-            
-            var employees = await (
-                    from e in _db.Employee
-                    join p in _db.Person on e.BusinessEntityID equals p.BusinessEntityID
-                    join em in _db.EmailAddress on e.BusinessEntityID equals em.BusinessEntityID into emx
-                    from em in emx.OrderBy(x => x.EmailAddressID).Take(1).DefaultIfEmpty()
-                    join dh in _db.EmployeeDepartmentHistory on e.BusinessEntityID equals dh.BusinessEntityID into dhx
-                    from dh in dhx.DefaultIfEmpty()
-                    join d in _db.Department on dh.DepartmentID equals d.DepartmentID into dx
-                    from d in dx.DefaultIfEmpty()
-                    select new EmployeeDTO
-                    {
-                        BusinessEntityID = e.BusinessEntityID,
-                        FirstName = p.FirstName,
-                        MiddleName = p.MiddleName,
-                        LastName = p.LastName,
-                        JobTitle = e.JobTitle,
-                        Department = dh != null && dh.EndDate == null ? d.Name : "(Sem departamento)",
-                        Email = em != null ? em.EmailAddress1 : "(Sem email)",
-                        HireDate = e.HireDate
-                    }
-
-            ).ToListAsync();
+            var employees = await _db.Employee
+                .Include(e => e.BusinessEntity)
+                .Include(e => e.EmployeeDepartmentHistory)
+                    .ThenInclude(h => h.Department)
+                .Include(e => e.BusinessEntity.EmailAddress)
+                .Select(e => new EmployeeViewModel
+                {
+                    BusinessEntityID = e.BusinessEntityID,
+                    FirstName = e.BusinessEntity.FirstName,
+                    MiddleName = e.BusinessEntity.MiddleName,
+                    LastName = e.BusinessEntity.LastName,
+                    JobTitle = e.JobTitle,
+                    Department = e.EmployeeDepartmentHistory
+                        .Where(h => h.EndDate == null)
+                        .Select(h => h.Department.Name)
+                        .FirstOrDefault() ?? "(Sem departamento)",
+                    Email = e.BusinessEntity.EmailAddress
+                        .OrderBy(em => em.EmailAddressID)
+                        .Select(em => em.EmailAddress1)
+                        .FirstOrDefault() ?? "",
+                    HireDate = e.HireDate
+                })
+                .OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
+                .ToListAsync();
 
             return Ok(employees);
         }
 
-        [HttpGet("{id}")]
+
+
+        [HttpGet("{id:int}")]
         public async Task<IActionResult> GetEmployee(int id)
         {
-            // Implementation for retrieving employees
-            return Ok("List of employees.");
+            if (id <= 0) return BadRequest("Indique um ID válido.");
+
+
+            var employee = await _db.Employee
+                .Where(e => e.BusinessEntityID == id)
+                .Include(e => e.BusinessEntity)
+                .Include(e => e.EmployeeDepartmentHistory)
+                    .ThenInclude(h => h.Department)
+                .Include(e => e.BusinessEntity.EmailAddress)
+                .FirstOrDefaultAsync();
+
+            if (employee is null)
+                return NotFound(new { error = $"Funcionário {id} não encontrado." });
+
+            var viewModel = new EmployeeViewModel
+            {
+                BusinessEntityID = employee.BusinessEntityID,
+                FirstName = employee.BusinessEntity.FirstName,
+                MiddleName = employee.BusinessEntity?.MiddleName,
+                LastName = employee.BusinessEntity.LastName,
+                JobTitle = employee.JobTitle,
+                Department = employee.EmployeeDepartmentHistory
+                    .Where(h => h.EndDate == null)
+                    .Select(h => h.Department.Name)
+                    .FirstOrDefault() ?? "(Sem departamento)",
+                Email = employee.BusinessEntity.EmailAddress
+                    .OrderBy(em => em.EmailAddressID)
+                    .Select(em => em.EmailAddress1)
+                    .FirstOrDefault() ?? "",
+                HireDate = employee.HireDate
+            };
+
+            return Ok(viewModel);
         }
+
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeDTO request)
@@ -95,7 +131,17 @@ namespace API.src.controllers
         [HttpGet("Payments/{id}")]
         public async Task<IActionResult> GetEmployeePayments(int id)
         {
-            return Ok("List of employee payments.");
+            if (id <= 0) return BadRequest("Indique um ID válido.");
+
+            var entities = await _db.EmployeePayHistory
+            .Where(p => p.BusinessEntityID == id)
+            .OrderByDescending(p => p.RateChangeDate)
+            .ToListAsync();
+
+            if (entities.Count == 0) return NotFound($"Não existem pagamentos para o colaborador com ID {id}.");
+            var payments = _mapper.Map<List<EmployeePayHistoryDTO>>(entities);
+
+            return Ok(payments);
         }
 
         [HttpGet("Movements/{id}")]
@@ -128,5 +174,17 @@ namespace API.src.controllers
             return Ok("Employee deleted.");
         }
 
+    }
+
+    public class EmployeeViewModel
+    {
+        public int BusinessEntityID { get; set; }
+        public required string FirstName { get; set; }
+        public string? MiddleName { get; set; }
+        public required string LastName { get; set; }
+        public required string JobTitle { get; set; }
+        public required string Department { get; set; }
+        public required string Email { get; set; }
+        public DateOnly HireDate { get; set; }
     }
 }
