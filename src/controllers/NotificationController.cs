@@ -1,12 +1,8 @@
 using API.src.models;
 using API.src.models.dtos;
-using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
-using API.src.utils;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
+using AutoMapper;
 
 namespace API.src.controllers
 {

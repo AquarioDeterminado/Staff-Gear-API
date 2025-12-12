@@ -7,14 +7,10 @@ using Microsoft.EntityFrameworkCore;
 using API.src.utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using API.src.models.viewModels;
 
 namespace API.src.controllers
 {
-    public class LoginRequest
-    {
-        public string Email { get; set; } = null!;
-        public string Password { get; set; } = null!;
-    }
 
     [ApiController]
     [Route("api/v1/[controller]")]
@@ -49,12 +45,12 @@ namespace API.src.controllers
             return Ok(new { AuthToken = newToken });
         }
 
-        // [HttpGet("logout")]
-        // [Authorize]
-        // public async Task<IActionResult> Logout()
-        // {
-            
-        // }
+        [HttpGet("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout()
+        {
+            return Unauthorized("Not implemented.");
+        }
     }
 }
 

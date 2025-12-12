@@ -8,8 +8,7 @@ using API.src.utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using API.src.models.dtos;
-
-
+using API.src.models.viewModels;
 
 namespace API.src.controllers
 {
@@ -33,23 +32,85 @@ namespace API.src.controllers
             _mapper = mapper;
         }
 
-        [HttpPost("")]
-        public async Task<IActionResult> CreateEmployee([FromBody] EmployeeDTO request)
+        [HttpPost]
+        public async Task<IActionResult> CreateEmployee([FromBody] EmployeeViewModel request)
         {
-            // Implementation for creating an employee
+            if (request == null)
+                return BadRequest("Request body is required.");
+            
+            if (string.IsNullOrWhiteSpace(request.FirstName) ||
+                string.IsNullOrWhiteSpace(request.LastName) ||
+                string.IsNullOrWhiteSpace(request.JobTitle) ||
+                string.IsNullOrWhiteSpace(request.Email) ||
+                string.IsNullOrWhiteSpace(request.Department))
+            {
+                return BadRequest("All fields are required.");
+            }
+
+            try
+            {
+                var businessEntity = new BusinessEntity();
+
+                var person = new Person
+                {
+                    BusinessEntity = businessEntity,
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    PersonType = "EM",
+                };
+
+                var email = new EmailAddress
+                {
+                    BusinessEntity = person,
+                    EmailAddress1 = request.Email,
+                };
+
+                var employee = new Employee
+                {
+                    BusinessEntity = person,
+                    HireDate = DateOnly.FromDateTime(DateTime.Now),
+                    Gender = "M",
+                    JobTitle = "New Hire",
+                    LoginID = request.Email,
+                    MaritalStatus = "S",
+                    BirthDate = DateOnly.FromDateTime(DateTime.Now.AddYears(-25)),
+                    NationalIDNumber = Guid.NewGuid().ToString().Substring(0, 10)
+                };
+
+                var deptHistory = new EmployeeDepartmentHistory
+                {
+                    BusinessEntity = employee,
+                    DepartmentID = _db.Department.FirstOrDefault(d => d.Name == "Sales")?.DepartmentID ?? 1,
+                    ShiftID = 1,
+                    StartDate = DateOnly.FromDateTime(DateTime.Now),
+                    EndDate = null
+                };
+
+                _db.BusinessEntity.Add(businessEntity);
+                _db.Person.Add(person);
+                _db.EmailAddress.Add(email);
+                _db.Employee.Add(employee);
+                _db.EmployeeDepartmentHistory.Add(deptHistory);                 
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                return Conflict($"Error creating employee: {ex.Message}");
+            }
 
             return Ok("Employee created.");
         }
 
-
-        [HttpGet("")]
+        // Working, a ordernar por nomes, ultimo nome primeiro
+        [HttpGet]
         public async Task<IActionResult> GetAllEmployees()
         {
             var employees = await _db.Employee
                 .Include(e => e.BusinessEntity)
                 .Include(e => e.EmployeeDepartmentHistory)
-                    .ThenInclude(h => h.Department)
+                .ThenInclude(h => h.Department)
                 .Include(e => e.BusinessEntity.EmailAddress)
+                .Where(e => e.CurrentFlag == false)
                 .Select(e => new EmployeeViewModel
                 {
                     BusinessEntityID = e.BusinessEntityID,
@@ -73,13 +134,10 @@ namespace API.src.controllers
             return Ok(employees);
         }
 
-
-
-        [HttpGet("{id:int}")]
+        [HttpGet("{id}")]
         public async Task<IActionResult> GetEmployee(int id)
         {
             if (id <= 0) return BadRequest("Indique um ID válido.");
-
 
             var employee = await _db.Employee
                 .Where(e => e.BusinessEntityID == id)
@@ -91,6 +149,9 @@ namespace API.src.controllers
 
             if (employee is null)
                 return NotFound(new { error = $"Funcionário {id} não encontrado." });
+            
+            if (employee.CurrentFlag == true)
+                return BadRequest("Employee is inactive.");
 
             var viewModel = new EmployeeViewModel
             {
@@ -113,17 +174,81 @@ namespace API.src.controllers
             return Ok(viewModel);
         }
 
-
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeDTO request)
+        public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeViewModel request)
         {
-            // Implementation for updating an employee
+            var employee = await _db.Employee.FindAsync(id);
+            if (employee == null)
+                return NotFound("Employee not found.");
+
+            if (employee.CurrentFlag == true)
+                return BadRequest("Employee is inactive.");
+
+            var person = await _db.Person.FindAsync(id);
+            if (person == null) 
+                return NotFound("Person not found.");
+            
+            employee.BusinessEntity = person;
+            person.FirstName = request.FirstName ?? person.FirstName;
+            person.MiddleName = request.MiddleName ?? person.MiddleName;
+            person.LastName = request.LastName ?? person.LastName;
+            employee.JobTitle = request.JobTitle ?? employee.JobTitle;
+            
+            var lastDep = await  _db.EmployeeDepartmentHistory
+                .Where(edh => edh.BusinessEntityID == id && edh.EndDate == null).FirstOrDefaultAsync();
+            if (lastDep == null || lastDep.Department.Name != request.Department)
+            {
+                var newDep = await _db.Department
+                    .Where(d => d.Name == request.Department)
+                    .FirstOrDefaultAsync();
+                if (newDep == null)
+                    return NotFound("Department not found.");
+
+                lastDep.EndDate = DateOnly.FromDateTime(DateTime.Now);
+                var newDepHistory = new EmployeeDepartmentHistory
+                {
+                    BusinessEntityID = id,
+                    DepartmentID = newDep.DepartmentID,
+                    ShiftID = lastDep.ShiftID,
+                    StartDate = DateOnly.FromDateTime(DateTime.Now),
+                    EndDate = null
+                };
+                await _db.EmployeeDepartmentHistory.AddAsync(newDepHistory);
+            }
+
+            var emailRecord = await _db.EmailAddress
+                .Where(ea => ea.BusinessEntityID == id)
+                .OrderBy(ea => ea.EmailAddressID)
+                .FirstOrDefaultAsync();
+
+            if (emailRecord != null)
+            {
+                emailRecord.EmailAddress1 = request.Email ?? emailRecord.EmailAddress1;
+            }
+            else
+            {
+                var newEmail = new EmailAddress
+                {
+                    BusinessEntityID = id,
+                    EmailAddress1 = request.Email,
+                    rowguid = Guid.NewGuid(),
+                    ModifiedDate = DateTime.Now
+                };
+                await _db.EmailAddress.AddAsync(newEmail);
+            }
+
+            await _db.SaveChangesAsync();
+
             return Ok("Employee updated.");
         }
 
         [HttpPost("alterpassword/{id}")]
         public async Task<IActionResult> AlterPassword(int id, [FromBody] AlterPasswordViewModel request)
         {
+            if (await _EmployeeIsActive(id))
+                return BadRequest("Employee is inactive.");
+
+
             // Implementation for altering an employee's password
             return Ok("Employee password altered.");
         }
@@ -133,6 +258,9 @@ namespace API.src.controllers
         {
             if (id <= 0) return BadRequest("Indique um ID válido.");
 
+            if (await _EmployeeIsActive(id))
+                return BadRequest("Employee is inactive.");
+
             var entities = await _db.EmployeePayHistory
             .Where(p => p.BusinessEntityID == id)
             .OrderByDescending(p => p.RateChangeDate)
@@ -141,16 +269,52 @@ namespace API.src.controllers
             if (entities.Count == 0) return NotFound($"Não existem pagamentos para o colaborador com ID {id}.");
             var payments = _mapper.Map<List<EmployeePayHistoryDTO>>(entities);
 
-            return Ok(payments);
+            var paymentsView = payments.Select(p => new PaymentViewModel
+            {
+                BusinessEntityID = p.BusinessEntityID,
+                FullName = _db.Person
+                            .Where(pe => pe.BusinessEntityID == p.BusinessEntityID)
+                            .Select(pe => pe.FirstName + " " + pe.LastName)
+                            .FirstOrDefault() ?? "Unknown",
+                Rate = p.Rate,
+                PayedDate = p.ModifiedDate
+            }).ToList();
+
+            return Ok(paymentsView);
         }
 
         [HttpGet("Movements/{id}")]
         public async Task<IActionResult> GetEmployeeMovements(int id)
         {
+            if (await _EmployeeIsActive(id))
+                return BadRequest("Employee is inactive.");
+
             var movements = await _db.EmployeeDepartmentHistory
                 .Where(em => em.BusinessEntityID == id)
                 .ToListAsync();
-            return Ok("List of employee movements.");
+
+            if (movements.Count == 0) return NotFound($"Não existem movimentações para o colaborador com ID {id}.");
+
+            var movementsView = movements.Select(m => new MovementViewModel
+            {
+                BusinessEntityID = m.BusinessEntityID,
+                FullName = _db.Person
+                            .Where(pe => pe.BusinessEntityID == m.BusinessEntityID)
+                            .Select(pe => pe.FirstName + " " + pe.LastName)
+                            .FirstOrDefault() ?? "Unknown",
+                DepartmentName = _db.Department
+                                    .Where(d => d.DepartmentID == m.DepartmentID)
+                                    .Select(d => d.Name)
+                                    .FirstOrDefault() ?? "Unknown",
+                JobTitle = _db.Employee
+                                    .Where(e => e.BusinessEntityID == m.BusinessEntityID)
+                                    .Select(e => e.JobTitle)
+                                    .FirstOrDefault() ?? "Unknown",
+                StartDate = m.StartDate,
+                EndDate = m.EndDate
+            }).ToList();
+
+            return Ok(movementsView);
         }
 
         [HttpDelete("{id}")]
@@ -162,29 +326,26 @@ namespace API.src.controllers
 
             if (employee == null)
                 return NotFound("Employee not found.");
-
-            _db.EmployeePayHistory.RemoveRange(_db.EmployeePayHistory.Where(eph => eph.BusinessEntityID == id));
-            _db.EmailAddress.RemoveRange(_db.EmailAddress.Where(ea => ea.BusinessEntityID == id));
-            _db.Password.RemoveRange(_db.Password.Where(p => p.BusinessEntityID == id));
-            _db.EmployeeDepartmentHistory.RemoveRange(_db.EmployeeDepartmentHistory.Where(edh => edh.BusinessEntityID == id));
-            _db.EmployeePayHistory.RemoveRange(_db.EmployeePayHistory.Where(ep => ep.BusinessEntityID == id));
-            _db.Employee.Remove(employee);
-            await _db.SaveChangesAsync();
-
-            return Ok("Employee deleted.");
+            
+            if (employee.CurrentFlag == true)
+                return BadRequest("Employee is already inactive.");
+            
+            try
+            {
+                employee.CurrentFlag = true;
+                _db.Employee.Update(employee);
+                await _db.SaveChangesAsync();
+                return Ok("Employee deleted.");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
         }
 
-    }
-
-    public class EmployeeViewModel
-    {
-        public int BusinessEntityID { get; set; }
-        public required string FirstName { get; set; }
-        public string? MiddleName { get; set; }
-        public required string LastName { get; set; }
-        public required string JobTitle { get; set; }
-        public required string Department { get; set; }
-        public required string Email { get; set; }
-        public DateOnly HireDate { get; set; }
+        private async Task<bool> _EmployeeIsActive(int id)
+        {
+            return !(await _db.Employee.FindAsync(id)).CurrentFlag;
+        }
     }
 }

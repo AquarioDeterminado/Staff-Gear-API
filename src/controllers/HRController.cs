@@ -9,27 +9,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using API.src.models.dtos;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using API.src.models.viewModels;
 
 namespace API.src.controllers
 {
-
-    class MovementViewModel
-    {
-        public int BusinessEntityID { get; set; }
-        public string FullName { get; set; }
-        public string DepartmentName { get; set; }
-        public string JobTitle { get; set; }
-        public DateOnly StartDate { get; set; }
-        public DateOnly? EndDate { get; set; }
-    }
-
-    class PaymentViewModel
-    {
-        public int BusinessEntityID { get; set; }
-        public string FullName { get; set; }
-        public decimal Rate { get; set; }
-        public DateTime PayedDate { get; set; }
-    }
 
     [ApiController]
     [Route("api/v1/[controller]")]
